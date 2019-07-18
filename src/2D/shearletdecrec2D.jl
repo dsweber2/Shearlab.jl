@@ -79,8 +79,9 @@ end # sheardecadjoint2D
 ## some array
 """
 ...
-shearrecadjoint2D(X,shearletSystem) compute the coefficient matrix of the adjoint inverse Shearlet
-transform of the array X
+    shearrecadjoint2D(X,shearletSystem) 
+
+compute the coefficient matrix of the adjoint inverse Shearlet transform of the array X
 ...
 """
 function shearrecadjoint2D(X,shearletSystem)
