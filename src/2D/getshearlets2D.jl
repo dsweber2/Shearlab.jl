@@ -17,13 +17,23 @@ end
   generates the Wedge, Bandpass and LowspassFilter of size rows x cols
   ...
   """
-function getwedgebandpasslowpassfilters2D(rows::Int,cols::Int,shearLevels,directionalFilter = filt_gen("directional_shearlet"),scalingFilter = filt_gen("scaling_shearlet"),waveletFilter = mirror(scalingFilter),
-                                          scalingFilter2 = scalingFilter,gpu = false)
+
+function getwedgebandpasslowpassfilters2D(rows::Int, cols::Int, shearLevels,
+                                          directionalFilter =
+                                          filt_gen("directional_shearlet"),
+                                          scalingFilter =
+                                          filt_gen("scaling_shearlet"),
+                                          waveletFilter =
+                                          mirror(scalingFilter),
+                                          scalingFilter2 = scalingFilter, gpu =
+                                          false)
+
   FFTW.set_num_threads(Sys.CPU_THREADS)
   # Make shearLevels integer
   shearLevels = map(Int,shearLevels);
   # The number of scales
   NScales = length(shearLevels);
+
   # Initialize the bandpass and wedge filter
   # Bandpass filters partion the frequency plane into different scales
   if gpu
@@ -319,19 +329,106 @@ end # getshearletidxs2D
 
 ####################################################################
 # Type of shearletsystem in 2D
-struct Shearletsystem2D{T<:Real}
-  shearlets::Array{Complex{T},3}
-  size::Tuple{Int,Int}
-  shearLevels::Array{Int,1}
-  full::Bool
-  nShearlets::Int
-  shearletIdxs::Array{Int,2}
-  dualFrameWeights::Array{T,2}
-  RMS::Array{T,2}
-  isComplex::Bool
+struct Shearletsystem2D{T<:Number, CT<:Union{Complex{T}, T}} # CT tells us
+    # whether we should be using a complex or real fft
+    shearlets::Array{Complex{T}, 3}
+    size::Tuple{Int, Int}
+    shearLevels::Array{Int, 1}
+    full::Bool
+    nShearlets::Int
+    shearletIdxs::Array{Int, 2}
+    dualFrameWeights::Array{T, 2}
+    RMS::Array{T, 2}
 	gpu::Bool
-  support::Array{Tuple{Tuple{Int,Int}, Tuple{Int,Int}}, 1}
-  #Shearletsystem2d{T}(shearlets,size,shearLevels,full,nShearlets,shearletIdxs,dualFrameWeights,RMS,isComplex,gpu,support) where T<:Real = new(shearlets,size,shearLevels,full,nShearlets,shearletIdxs,dualFrameWeights,RMS,isComplex,gpu,support)
+    padded::Bool
+    padBy::Tuple{Int, Int}
+end
+
+
+#######################################################################
+# helper methods to reduce code redundandancy
+
+"""
+    shearlets, dualFrameWeights = padShearlets(shearlets, dualFrameWeights, typeBecomes)
+
+Add padding in the space domain and convert back. Also, if the type being
+transformed is real, only store half the coefficients, as they're otherwise
+redundant.
+"""
+function padShearlets(shearlets, dualFrameWeights, typeBecomes, padBy, upperFrameBound)
+    shearlets = real.(fftshift(ifft(ifftshift(shearlets, (1, 2)), (1, 2)),
+                               (1, 2)))
+    shearlets = cat([pad(shearlets[:,:,j], padBy) for
+                     j=1:size(shearlets,3)]...; dims = 3)
+    if typeBecomes <: Real
+        P = plan_rfft(zeros(typeBecomes, size(shearlets)[1:2]), (1,2))
+        newSize = (div(size(shearlets,1), 2)+1, size(shearlets)[2:3]...)
+    else
+        P = plan_fft(zeros(typeBecomes, size(shearlets)[1:2]), (1,2))
+        newSize = size(shearlets)
+    end
+    newShears = zeros(Complex{eltype(shearlets)}, newSize)
+
+    for j=1:size(shearlets, 3)
+        newShears[:, :, j] = fftshift(P * shearlets[:, :, j])
+    end
+    dualFrameWeights = sum(real.(abs.(newShears).^2), dims=3)[:,:]
+    if upperFrameBound > 0
+        totalMass = norm(dualFrameWeights, Inf)
+        normalize = typeBecomes(upperFrameBound)/totalMass
+        newShears = newShears .* normalize
+        dualFrameWeights = sum(real.(abs.(newShears).^2), dims=3)[:,:]
+    end
+    return (newShears, dualFrameWeights)
+end
+
+"""
+    shearlets, dualFrameWeights, RMS, rows, cols, nShearlets =
+        generateShearlets(shearletIdxs, Preparedfilters,typeBecomes)
+
+the core code for generating shearlets
+"""
+function generateShearlets(shearletIdxs, Preparedfilters, typeBecomes, gpu)
+    rows = Preparedfilters.size[1];
+    cols = Preparedfilters.size[2];
+    nShearlets = size(shearletIdxs,1);
+    if gpu
+        shearlets = AFArray(zeros(Complex{Float32},rows,cols,nShearlets));
+    else
+        shearlets = zeros(typeBecomes, rows, cols, nShearlets)+im .*
+            zeros(rows, cols, nShearlets);
+    end
+    # Compute shearlets
+    for j = 1:nShearlets
+        cone = shearletIdxs[j,1];
+        scale = shearletIdxs[j,2];
+        shearing = shearletIdxs[j,3];
+
+        if cone == 0
+            shearlets[:,:,j] = Preparedfilters.cone1.lowpass;
+        elseif cone == 1
+            #here, the fft of the digital shearlet filters described in
+            #equation (23) on page 15 of "ShearLab 3D: Faithful Digital
+            #Shearlet Transforms based on Compactly Supported Shearlets" is computed.
+            #for more details on the construction of the wedge and bandpass
+            #filters, please refer to getwedgebandpasslowpassfilters2D.
+            shearlets[:,:,j] =
+                Preparedfilters.cone1.wedge[Preparedfilters.shearLevels[scale]+1][:,:,-shearing+2^Preparedfilters.shearLevels[scale]+1].*conj(Preparedfilters.cone1.bandpass[:,:,scale]);
+        else
+            shearlets[:,:,j] =
+                permutedims(Preparedfilters.cone2.wedge[Preparedfilters.shearLevels[scale]+1][:,:,shearing+2^Preparedfilters.shearLevels[scale]+1].*conj(Preparedfilters.cone2.bandpass[:,:,scale]),[2,1]);
+        end
+    end
+
+	RMS =  transpose(sum(reshape(sum(real.(abs.(shearlets)).^2, dims=1), size(shearlets, 2), size(shearlets, 3)), dims=1));
+    if gpu
+        RMS = (sqrt.(RMS)/convert(T, sqrt.(rows*cols)));
+        dualFrameWeights = sum(real(abs.(shearlets)).^2,dims=3);
+    else
+        RMS = (sqrt.(RMS)/sqrt.(rows*cols));
+        dualFrameWeights = dropdims(sum(abs.(shearlets).^2,dims=3),dims=3); # need to stream to host before they fix abs of comples AFArray
+    end
+    return (shearlets, dualFrameWeights, RMS, rows, cols, nShearlets)
 end
 
 #######################################################################
@@ -342,117 +439,95 @@ end
 
 generates the desired shearlet system
   """
-function getshearletsystem2D(rows,cols,nScales,
+function getshearletsystem2D(rows, cols, nScales,
                              shearLevels=ceil.((1:nScales)/2),
                              full= false,
                              directionalFilter = filt_gen("directional_shearlet"),
-                             quadratureMirrorFilter= filt_gen("scaling_shearlet"),gpu=false; typeBecomes=Float64)
+                             quadratureMirrorFilter=
+                             filt_gen("scaling_shearlet"), gpu=false;
+                             typeBecomes=Float64, padded=true, tolerance =
+                             1e-10, upperFrameBound = -1)
 
-  # Set default value generates the desired shearlet systems
-  shearLevels = Int.(shearLevels)
+    # Set default value generates the desired shearlet systems
+    shearLevels = Int.(shearLevels)
 
-  #Generate prepared Filters and indices
-  Preparedfilters = preparefilters2D(rows,cols,nScales,shearLevels,directionalFilter,quadratureMirrorFilter,mirror(quadratureMirrorFilter),quadratureMirrorFilter, gpu);
-  shearletIdxs = getshearletidxs2D(shearLevels,full);
+    #Generate prepared Filters and indices
+    Preparedfilters = preparefilters2D(rows, cols, nScales, shearLevels,
+                                       directionalFilter,
+                                       quadratureMirrorFilter,
+                                       mirror(quadratureMirrorFilter),
+                                       quadratureMirrorFilter,  gpu);
+    shearletIdxs = getshearletidxs2D(shearLevels, full);
 
-  # Generate shearlets, RMS(rootmeansquare), dualFrameWeights
-  rows = Preparedfilters.size[1];
-  cols = Preparedfilters.size[2];
-  nShearlets = size(shearletIdxs,1);
-  if gpu
-    shearlets = AFArray(zeros(Complex{Float32},rows,cols,nShearlets));
-  else
-    shearlets = zeros(rows,cols,nShearlets)+im .* zeros(rows,cols,nShearlets);
-  end
-  # Compute shearlets
-  for j = 1:nShearlets
-    cone = shearletIdxs[j,1];
-    scale = shearletIdxs[j,2];
-    shearing = shearletIdxs[j,3];
+    # Generate shearlets, RMS(rootmeansquare), dualFrameWeights
+    shearlets, dualFrameWeights, RMS, rows, cols, nShearlets =
+        generateShearlets(shearletIdxs, Preparedfilters, typeBecomes, gpu)
 
-    if cone == 0
-      shearlets[:,:,j] = Preparedfilters.cone1.lowpass;
-    elseif cone == 1
-      #here, the fft of the digital shearlet filters described in
-      #equation (23) on page 15 of "ShearLab 3D: Faithful Digital
-      #Shearlet Transforms based on Compactly Supported Shearlets" is computed.
-      #for more details on the construction of the wedge and bandpass
-      #filters, please refer to getwedgebandpasslowpassfilters2D.
-      shearlets[:,:,j] = Preparedfilters.cone1.wedge[Preparedfilters.shearLevels[scale]+1][:,:,-shearing+2^Preparedfilters.shearLevels[scale]+1].*conj(Preparedfilters.cone1.bandpass[:,:,scale]);
-    else
-      shearlets[:,:,j] = permutedims(Preparedfilters.cone2.wedge[Preparedfilters.shearLevels[scale]+1][:,:,shearing+2^Preparedfilters.shearLevels[scale]+1].*conj(Preparedfilters.cone2.bandpass[:,:,scale]), [2,1]);
+    # adjust sizes if we're padding, and/or store using half the coefficients
+    # if the data is real
+    padBy = getPadBy(shearlets, tolerance = tolerance)
+    if padded || typeBecomes <: Real
+        # this is probably inefficient, but it works
+        shearlets, dualFrameWeights = padShearlets(shearlets, dualFrameWeights,
+                                                   typeBecomes, padBy, upperFrameBound)
     end
-  end
-
-	RMS =  transpose(sum(reshape(sum(real.(abs.(shearlets)).^2, dims=1), size(shearlets, 2), size(shearlets, 3)), dims=1));
-  if gpu
-    RMS = (sqrt.(RMS)/convert(Float32,sqrt.(rows*cols)));
-    dualFrameWeights = sum(real(abs.(shearlets)).^2,dims=3);
-  else
-    RMS = (sqrt.(RMS)/sqrt.(rows*cols));
-    dualFrameWeights = dropdims(sum(abs.(shearlets).^2,dims=3),dims=3); # need to stream to host before they fix abs of comples AFArray
-  end
-  #return the system
-  support = findSupport(shearlets)
-  println("shearletIdxs$(shearletIdxs)")
-  return Shearletsystem2D(Complex{typeBecomes}.(shearlets), Preparedfilters.size,
-                          Preparedfilters.shearLevels, full, size(shearletIdxs, 1),
-                          shearletIdxs, typeBecomes.(dualFrameWeights), typeBecomes.(RMS), false, gpu, support)
+    
+    if typeBecomes <: Real
+        T = typeBecomes
+        CT = typeBecomes
+    else
+        T = real(typeBecomes)
+        CT = typeBecomes
+    end
+    #return the system
+    return Shearletsystem2D{T, CT}(shearlets, Preparedfilters.size,
+                            Preparedfilters.shearLevels, full,
+                            size(shearletIdxs, 1), shearletIdxs,
+                            dualFrameWeights, RMS, gpu, padded, padBy)
 end #getshearletsystem2D
 
 
-
 # type for individual shearlets2D
-struct Shearlets2D
-	shearlets
-	RMS
-	dualFrameWeights
-	gpu
+struct Shearlets2D{T<:Number, CT <: Union{Complex{T}, Nothing}}
+	shearlets::Array{Complex{T}, 3}
+	RMS::Array{T, 2}
+	dualFrameWeights::Array{T, 2}
+	gpu::Bool
+    padded::Bool
+    padBy::Tuple{Int, Int}
 end
 
 #######################################################################
 # Function that generates the desired shearlets
 """
-  ...
-   getshearlets2D(PreparedFilters,shearletIdxs,gpu = false) generates the 2D shearlets in the frequency domain
-  ...
-  """
-function getshearlets2D(Preparedfilters, shearletIdxs = getshearletidxs2D(Preparedfilters.shearLevels),gpu = false)
-  # Generate shearlets, RMS(rootmeansquare), dualFrameWeights
-  rows = Preparedfilters.size[1];
-  cols = Preparedfilters.size[2];
-  nShearlets = size(shearletIdxs,1);
-	if gpu
-    shearlets = AFArray(zeros(Complex{Float32},rows,cols,nShearlets));
-	else
-    shearlets = zeros(rows,cols,nShearlets)+im*zeros(rows,cols,nShearlets);
-	end
-  # Compute shearlets
-  for j = 1:nShearlets
-    cone = shearletIdxs[j,1];
-    scale = shearletIdxs[j,2];
-    shearing = shearletIdxs[j,3];
+   getshearlets2D(PreparedFilters,shearletIdxs,gpu = false) 
 
-    if cone == 0
-      shearlets[:,:,j] = Preparedfilters.cone1.lowpass;
-    elseif cone == 1
-      #here, the fft of the digital shearlet filters described in
-      #equation (23) on page 15 of "ShearLab 3D: Faithful Digital
-      #Shearlet Transforms based on Compactly Supported Shearlets" is computed.
-      #for more details on the construction of the wedge and bandpass
-      #filters, please refer to getwedgebandpasslowpassfilters2D.
-      shearlets[:,:,j] = Preparedfilters.cone1.wedge[Preparedfilters.shearLevels[scale]+1][:,:,-shearing+2^Preparedfilters.shearLevels[scale]+1].*conj(Preparedfilters.cone1.bandpass[:,:,scale]);
-    else
-      shearlets[:,:,j] = permutedims(Preparedfilters.cone2.wedge[Preparedfilters.shearLevels[scale]+1][:,:,shearing+2^Preparedfilters.shearLevels[scale]+1].*conj(Preparedfilters.cone2.bandpass[:,:,scale]),[2,1]);
+generates the 2D shearlets in the frequency domain
+"""
+function getshearlets2D(Preparedfilters, shearletIdxs =
+                        getshearletidxs2D(Preparedfilters.shearLevels), gpu =
+                        false; typeBecomes=Float64, padded=true,
+                        upperFrameBound = -1)
+  # Generate shearlets, RMS(rootmeansquare), dualFrameWeights
+    shearlets, dualFrameWeights, RMS, rows, cols, nShearlets =
+        generateShearlets(shearletIdxs, Preparedfilters, typeBecomes, gpu)
+
+    # adjust sizes if we're padding, and/or store using half the coefficients
+    # if the data is real
+    padBy = getPadBy(shearlets, tolerance = tolerance)
+    if padded || typeBecomes <: Real
+        # this is probably inefficient, but it works
+        shearlets, dualFrameWeights = padShearlets(shearlets, dualFrameWeights,
+                                                   typeBecomes, padBy, upperFrameBound)
     end
-  end
-	RMS =  transpose(sum(reshape(sum(real(abs.(shearlets)).^2,dims=1),size(shearlets,2),size(shearlets,3)),dims=1));
-  if gpu
-    RMS = (sqrt.(RMS)/convert(Float32,sqrt.(rows*cols)));
-    dualFrameWeights = sum(real(abs.(shearlets)).^2,dims=3);
-  else
-    RMS = (sqrt.(RMS)/sqrt.(rows*cols));
-    dualFrameWeights = dropdims(sum(abs.(shearlets).^2,dims=3),3); # need to stream to host before they fix abs of comples AFArray
-  end
-	return Shearlets2D(shearlets, RMS, dualFrameWeights,gpu)
+
+    if typeBecomes <: Real
+        T = typeBecomes
+        CT = typeBecomes
+    else
+        T = real(typeBecomes)
+        CT = typeBecomes
+    end
+
+	return Shearlets2D{T, CT}(shearlets, RMS, dualFrameWeights, gpu, padded, padBy)
 end #getshearlets2D

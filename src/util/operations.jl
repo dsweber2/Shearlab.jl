@@ -310,3 +310,50 @@ function findSupport(shears::Array{<:Number, 3}; tolerance::Float64=1e-10)
   end
   return effSupport
 end
+
+
+"""
+    padBy = 
+
+getPadBy(supports; tolerance::Float64=1e-10)
+
+Find the amount to pad by to guarantee that no shearlet's support wraps around
+the boundary. Support here being the space window that captures `1-tolerance`
+of the mass
+
+"""
+function getPadBy(shears; tolerance::Float64=1e-10)
+    supports = findSupport(shears; tolerance = tolerance)
+    padBy = (0, 0)
+
+    for sysPad in supports
+        padBy = (max(sysPad[1][2]-sysPad[1][1], padBy[1]), max(padBy[2],
+                                                               sysPad[2][2]-sysPad[2][1]))
+    end
+    return padBy
+end
+
+
+"""
+    pad(x, padBy)
+create a padded version of X so that it has +/-padBy[1] extra zeros in the
+first dimension and +/-padBy[2] in the second dimension. All other dimensions
+are untouched.
+"""
+function pad(x, padBy)
+    T = eltype(x)
+    szx = size(x)
+    corner = zeros(T, padBy...,  szx[3:end]...)
+    firstRow = cat(corner,
+                   zeros(T, padBy[1], szx[2:end]...),
+                   corner, dims = 2)
+    secondRow = cat(zeros(T, szx[1] , padBy[2], szx[3:end]...),
+                    x,
+                    zeros(T, szx[1] , padBy[2], szx[3:end]...),
+                    dims=2)
+    thirdRow = cat(corner,
+                   zeros(T, padBy[1], szx[2:end]...),
+                   corner,
+                   dims = 2)
+    return cat(firstRow, secondRow, thirdRow, dims = 1)
+end
