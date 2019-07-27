@@ -106,9 +106,9 @@ end
 ## Function that compute the coefficient matrix of the Shearlet Transform of
 ## some array
 """
-    sheardec2D(X::SubArray{T,N},
-                    shearletSystem::Shearlab.Shearletsystem2D{T};
-                    P::{plan_(r)fft})
+    sheardec2D(X::AbstractArray{CT,N},
+                    shearletSystem::Shearlab.Shearletsystem2D{T, CT};
+                    P::{plan_(r)fft}=-1) where {T <: Number, CT, N}
 
 Compute the coefficient matrix of the Shearlet transform across the first two
 dimensions of X. If `shearletSystem.padded` is true, it pads the shearlet
