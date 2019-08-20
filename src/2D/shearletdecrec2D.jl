@@ -144,7 +144,12 @@ function sheardec2D(X::AbstractArray{CT, N},
     used2 = padBy[2] .+ (1:size(X, 2))
     for j = 1:shearletSystem.nShearlets
         # The fourier transform of X
-        neededShear = conj(shearletSystem.shearlets[:, :, j])
+        if j==1
+            j = shearletSystem.nShearlets
+        elseif j== shearletSystem.nShearlets
+            j = 1
+        end
+        neededShear = shearletSystem.shearlets[:, :, j]
         shearing!(X, neededShear, P,  coeffs, padBy, used1, used2, j)
     end
     return coeffs
@@ -184,6 +189,12 @@ function shearrec2D(coeffs::AbstractArray{CT, N},
     used1 = padBy[1] .+ (1:shearletSystem.size[1])
     used2 = padBy[2] .+ (1:shearletSystem.size[2])
     for j = 1:shearletSystem.nShearlets
+        if j==1
+            j = shearletSystem.nShearlets
+        elseif j== shearletSystem.nShearlets
+            j = 1
+        end
+
         neededShear = shearletSystem.shearlets[:, :, j]
         unshearing!(X̂, neededShear, P,  coeffs, padBy, j)
     end
