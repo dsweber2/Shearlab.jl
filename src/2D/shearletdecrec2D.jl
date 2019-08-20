@@ -130,7 +130,7 @@ function sheardec2D(X::AbstractArray{CT, N},
     else
         coeffShape = (size(X)[1:2]..., size(shearletSystem.shearlets, 3))
     end
-    
+
     coeffs = zeros(CT, coeffShape...)
     
     # if you didn't hand it a plan, adjust the kind made based on the inputs
@@ -210,7 +210,7 @@ function sheardecadjoint2D(coeffs,shearletSystem)
         X = zeros(Complex{Float64},size(coeffs,1),size(coeffs,2));
     end
     for j = 1:shearletSystem.nShearlets
-        X = X+fftshift(fft(ifftshift(coeffs[:,:,j]))).*conj(shearletSystem.shearlets[:,:,j]);
+        X = X+fftshift(fft(ifftshift(coeffs[:,:,j]))).*shearletSystem.shearlets[:,:,j];
     end
     return real(fftshift(ifft(ifftshift((1 ./shearletSystem.dualFrameWeights).*X))))
 
@@ -240,7 +240,7 @@ function shearrecadjoint2D(X,shearletSystem)
     #not that pointwise multiplication in the fourier domain equals convolution
     #in the time-domain
     for j = 1:shearletSystem.nShearlets
-        coeffs[:,:,j] = fftshift(ifft(ifftshift(Xfreq.*shearletSystem.shearlets[:,:,j])));
+        coeffs[:,:,j] = fftshift(ifft(ifftshift(Xfreq.*conj(shearletSystem.shearlets[:,:,j]))));
     end
     return coeffs
 end # shearrecadjoint2D

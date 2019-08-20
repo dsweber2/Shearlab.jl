@@ -339,10 +339,17 @@ struct Shearletsystem2D{T<:Number, CT<:Union{Complex{T}, T}} # CT tells us
     shearletIdxs::Array{Int, 2}
     dualFrameWeights::Array{T, 2}
     RMS::Array{T, 2}
-	gpu::Bool
+    gpu::Bool
     padded::Bool
     padBy::Tuple{Int, Int}
 end
+
+function Base.show(io::IO, l::Shearletsystem2D{T,CT}) where {T,CT}
+    print(io, "Shearletsystem2D{$(T),$(CT)}(input = $(l.size), levels = $(l.shearLevels),"*
+          " nshearlets = $(l.nShearlets),gpu=$(l.gpu)"*(l.padded ?
+                                                        ", padBy = $(l.padBy))" : ""))
+end
+
 
 
 #######################################################################
@@ -370,7 +377,7 @@ function padShearlets(shearlets, dualFrameWeights, typeBecomes, padBy, upperFram
     newShears = zeros(Complex{eltype(shearlets)}, newSize)
 
     for j=1:size(shearlets, 3)
-        newShears[:, :, j] = fftshift(P * shearlets[:, :, j])
+        newShears[:, :, j] = P * shearlets[:, :, j]
     end
     dualFrameWeights = sum(real.(abs.(newShears).^2), dims=3)[:,:]
     if upperFrameBound > 0
@@ -479,6 +486,9 @@ function getshearletsystem2D(rows, cols, nScales,
         T = real(typeBecomes)
         CT = typeBecomes
     end
+    # we were doing this a lot. Let's do it once
+    shearlets = conj(shearlets)
+
     #return the system
     return Shearletsystem2D{T, CT}(shearlets, Preparedfilters.size,
                             Preparedfilters.shearLevels, full,
