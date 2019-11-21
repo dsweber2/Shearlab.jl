@@ -18,8 +18,7 @@ export
 			Shearlets2D, getshearlets2D,
 			sheardec2D, shearrec2D,
 			Serialpreparedfilters, prepareserial2D, Sheardecserial2D, sheardecserial2D,
-			shearrecserial2D, finishserial2D#,
-			# AFArray
+			shearrecserial2D, finishserial2D, /, \, ⋆
 
 include("util/operations.jl")
 include("2D/getshearlets2D.jl")
