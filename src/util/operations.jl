@@ -11,7 +11,7 @@ is bigger than the targeted size, it will centered it at zero
 and cut it off to fit
 ...
 """
-function padarray(array::AbstractArray{T},newSize,gpu = 0) where {T<:Number}
+function padarray(array::AbstractArray{T},newSize,gpu = false) where {T<:Number}
     # If you want to use gpu via ArrayFire array needs to be ArrayFire.AFArray{Float32,2}
     # Small patch if the array is one dimensional
     if size([size(array)...])[1]==1
@@ -38,13 +38,13 @@ function padarray(array::AbstractArray{T},newSize,gpu = 0) where {T<:Number}
     end
     # We need to check if some of the padsizes are negative and cut the array from the center
     # Initialize the padded array with zeros
-    if gpu == 1
+    if gpu
         paddedArray = AFArray(zeros(typeof(array[1]), newSize...))
     else
         paddedArray = zeros(typeof(array[1]),newSize...)
     end
     # lets create the indices array
-    if gpu == 1
+    if gpu
         paddedArray[[idbig[1]+padSizes[1],idbig[2]+padSizes[2]]...] = array[idbig...]
     else
         view(paddedArray,[idbig[1].+padSizes[1],idbig[2].+padSizes[2]]...) .= view(array,idbig...)
@@ -59,7 +59,7 @@ end #padarray
 fliplr(array,gpu) flips an array from left to right in the second dimension
 ...
 """
-function fliplr(array::AbstractArray{T},gpu = 0) where {T<:Number}
+function fliplr(array::AbstractArray{T},gpu = false) where {T<:Number}
     return reverse(array,dims=2)
 end #fliplr
 
@@ -72,11 +72,11 @@ upsample(array,dims,nZeros,gpu) upsample an array, in the dimensions dims
 with nZeros
 ...
 """
-function upsample(array::AbstractArray{T},dims::Integer,nZeros::Integer, gpu = 0) where {T<:Number}
+function upsample(array::AbstractArray{T},dims::Integer,nZeros::Integer, gpu = false) where {T<:Number}
     sz = [size(array)...]
     szUpsampled = sz
     szUpsampled[dims] = (szUpsampled[dims]-1).*(nZeros+1)+1
-    if gpu == 1
+    if gpu
         arrayUpsampled = AFArray(zeros(typeof(array[1]),szUpsampled...))
     else
         arrayUpsampled = zeros(typeof(array[1]),szUpsampled...);
@@ -115,8 +115,8 @@ dshear(array,k,axis,gpu) shears and array in order k in the direction of
 axis
 ...
 """
-function dshear(array::AbstractArray{T},k::Integer,axis::Integer, gpu = 0) where {T<:Number}
-    if gpu == 1
+function dshear(array::AbstractArray{T},k::Integer,axis::Integer, gpu = false) where {T<:Number}
+    if gpu
         array = Array(array)
     end
     if k == 0
@@ -135,7 +135,7 @@ function dshear(array::AbstractArray{T},k::Integer,axis::Integer, gpu = 0) where
             end
         end
     end
-    if gpu == 1
+    if gpu
         sheared = AFArray(sheared)
     end
     return sheared
@@ -287,4 +287,73 @@ function describeConfig(kk::Int)
         # Configuration 8
         return "the Haar scaling function, the mirrored version as the wavelet, and the 3nd directional shearlet"
     end
+end
+
+
+"""
+    findSupport(shears::Array{<:Number, 3}; tolerance::Float64=1e-10)
+
+The default tolerance keeps ~99% of the coefficients (and a significantly high fraction of the mass)
+TODO: implement this in an efficient way (i.e. use the fact that these originate from sheared versions of the same functions)
+"""
+function findSupport(shears::Array{<:Number, 3}; tolerance::Float64=1e-10)
+  nShears = size(shears,3)
+  effSupport = Array{Tuple{Tuple{Int,Int}, Tuple{Int,Int}}}(undef, nShears)
+  spaceShears = real.(fftshift(ifft(ifftshift(shears), (1, 2))))
+  actuallySupported = abs.(spaceShears).>=tolerance
+  doesThisRowHaveTolEls= maximum(actuallySupported,dims=1)
+  doesThisColHaveTolEls = maximum(actuallySupported,dims=2)
+  size(doesThisRowHaveTolEls)
+  size(doesThisColHaveTolEls)
+  for i=1:nShears
+     effSupport[i] = ((findfirst(doesThisColHaveTolEls[:,1,i]), findlast(doesThisColHaveTolEls[:,1,i])), (findfirst(doesThisRowHaveTolEls[1,:,i]), findlast(doesThisRowHaveTolEls[1,:,i])))
+  end
+  return effSupport
+end
+
+
+"""
+    padBy = 
+
+getPadBy(supports; tolerance::Float64=1e-10)
+
+Find the amount to pad by to guarantee that no shearlet's support wraps around
+the boundary. Support here being the space window that captures `1-tolerance`
+of the mass
+
+"""
+function getPadBy(shears; tolerance::Float64=1e-10)
+    supports = findSupport(shears; tolerance = tolerance)
+    padBy = (0, 0)
+
+    for sysPad in supports
+        padBy = (max(sysPad[1][2]-sysPad[1][1], padBy[1]), max(padBy[2],
+                                                               sysPad[2][2]-sysPad[2][1]))
+    end
+    return padBy
+end
+
+
+"""
+    pad(x, padBy)
+create a padded version of X so that it has +/-padBy[1] extra zeros in the
+first dimension and +/-padBy[2] in the second dimension. All other dimensions
+are untouched.
+"""
+function pad(x, padBy)
+    T = eltype(x)
+    szx = size(x)
+    corner = zeros(T, padBy...,  szx[3:end]...)
+    firstRow = cat(corner,
+                   zeros(T, padBy[1], szx[2:end]...),
+                   corner, dims = 2)
+    secondRow = cat(zeros(T, szx[1] , padBy[2], szx[3:end]...),
+                    x,
+                    zeros(T, szx[1] , padBy[2], szx[3:end]...),
+                    dims=2)
+    thirdRow = cat(corner,
+                   zeros(T, padBy[1], szx[2:end]...),
+                   corner,
+                   dims = 2)
+    return cat(firstRow, secondRow, thirdRow, dims = 1)
 end
