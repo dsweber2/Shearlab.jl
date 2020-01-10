@@ -182,7 +182,7 @@ function getwedgebandpasslowpassfilters2D(rows::Int, cols::Int, shearLevels,
       #by convolving the upsampled directional filter with a lowpass filter in y-direction, we remove all
       #but the central wedge in the frequency domain.
 
-      wedgeHelp = conv2(directionalFilterUpsampled, filterLow2[size(filterLow2,2)-shearLevel][:,:])
+      wedgeHelp = conv(directionalFilterUpsampled, filterLow2[size(filterLow2,2)-shearLevel][:,:])
       wedgeHelp = padarray(wedgeHelp,[rows,cols]);
 
       #please note that wedgeHelp now corresponds to
@@ -472,11 +472,13 @@ function getshearletsystem2D(rows, cols, nScales,
 
     # adjust sizes if we're padding, and/or store using half the coefficients
     # if the data is real
-    padBy = getPadBy(shearlets, tolerance = tolerance)
-    if padded || typeBecomes <: Real
+    if padded
         # this is probably inefficient, but it works
+        padBy = getPadBy(shearlets, tolerance = tolerance)
         shearlets, dualFrameWeights = padShearlets(shearlets, dualFrameWeights,
                                                    typeBecomes, padBy, upperFrameBound)
+    else
+        padBy = (0,0)
     end
     
     if typeBecomes <: Real
@@ -499,10 +501,10 @@ end #getshearletsystem2D
 
 # type for individual shearlets2D
 struct Shearlets2D{T<:Number, CT <: Union{Complex{T}, Nothing}}
-	shearlets::Array{Complex{T}, 3}
-	RMS::Array{T, 2}
-	dualFrameWeights::Array{T, 2}
-	gpu::Bool
+    shearlets::Array{Complex{T}, 3}
+    RMS::Array{T, 2}
+    dualFrameWeights::Array{T, 2}
+    gpu::Bool
     padded::Bool
     padBy::Tuple{Int, Int}
 end
