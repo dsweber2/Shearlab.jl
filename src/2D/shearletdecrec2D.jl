@@ -154,7 +154,12 @@ function sheardec2D(X::AbstractArray{CT, N},
     end
     return coeffs
 end # sheardec2D
-
+⋆(shears::Shearletsystem2D, X) = sheardec(X, shears) #\star
+⋆(X, shears::Shearletsystem2D) = sheardec(X, shears) #\star
+import Base./
+import Base.\
+\(shears::Shearletsystem2D, X) = shearrec2D(X, shears) #\star
+/(X, shears::Shearletsystem2D) = shearrecD2(X, shears) #\star
 
 
 
