@@ -146,7 +146,7 @@ function sheardec2D(X::AbstractArray{CT, N},
         # The fourier transform of X
         if j==1
             j = shearletSystem.nShearlets
-        elseif j== shearletSystem.nShearlets
+        elseif j == shearletSystem.nShearlets
             j = 1
         end
         neededShear = shearletSystem.shearlets[:, :, j]

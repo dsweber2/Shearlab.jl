@@ -160,6 +160,13 @@ the size of the filters and set new possible configurations
 ...
 """
 function checkfiltersizes(rows,cols,shearLevels,directionalFilter,scalingFilter,waveletFilter,scalingFilter2)
+    # println("input is rows=$(rows)")
+    # println("cols=$(cols)")
+    # println("shearLevels=$(shearLevels)")
+    # println("directionalFilter=$(directionalFilter)")
+    # println("scalingFilter=$(scalingFilter)")
+    # println("waveletFilter=$(waveletFilter)")
+    # println("scalingFilter2 = $(scalingFilter2)")
     # Lets initialize the FilterConfig array,
     filterSetup = []
     # Set all configurations
@@ -221,7 +228,9 @@ function checkfiltersizes(rows,cols,shearLevels,directionalFilter,scalingFilter,
     # Check the sizes of the filters in comparison with the rows and cols
     kk = 0;
     success1 = 0;
+    # println("lets find out why this breaks")
     for k = 1:8
+        # println("k=$(k)")
         ## check 1
         lwfilter = length(filterSetup[k].waveletFilter);
         lsfilter = length(filterSetup[k].scalingFilter);
@@ -229,6 +238,7 @@ function checkfiltersizes(rows,cols,shearLevels,directionalFilter,scalingFilter,
         for j = 1:(length(shearLevels)-1)
             lcheck1 = lsfilter + 2*lcheck1 - 2;
         end
+        # println("lcheck1 = $(lcheck1)")
         if lcheck1 > cols || lcheck1 > rows
             continue;
         end
@@ -244,11 +254,12 @@ function checkfiltersizes(rows,cols,shearLevels,directionalFilter,scalingFilter,
             lcheck2help = lsfilter2 + 2*lcheck2help - 2;
         end
         lcheck2 = lcheck2help + lcheck2 - 1;
+        # println("lcheck2 = $(lcheck2)")
         if lcheck2 > cols || lcheck2 > rows || colsdirfilter > cols || colsdirfilter > rows
             continue;
         end
         success1 = 1;
-		kk = k;
+	kk = k;
         break;
     end
     if success1 == 0

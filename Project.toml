@@ -12,4 +12,8 @@ PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
 Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
-[compat]
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
