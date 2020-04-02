@@ -12,7 +12,7 @@ to X
 """
 function unshearing!(X̂, neededShear, P, coeffs, padBy, j)
     for i in eachindex(view(X̂, 1, 1, axes(X̂)[3:end]...))
-        cFreq = fftshift( P * (pad(coeffs[:, :, j, i], padBy)))
+        cFreq = P * (pad(coeffs[:, :, j, i], padBy))
         X̂[:, :, i] = X̂[:, :, i] + cFreq .* neededShear
     end
 end
@@ -20,7 +20,7 @@ end
 function unshearing!(X̂::AbstractArray{S,2}, neededShear, P,
                      coeffs::AbstractArray{T,3}, padBy, j) where {T,
                                                                   S <: Complex}
-    cFreq = fftshift( P * (pad(coeffs[:, :, j], padBy)))
+    cFreq = P * (pad(coeffs[:, :, j], padBy))
     X̂[:, :] = X̂[:, :] + cFreq .* neededShear
 end
 
@@ -31,29 +31,26 @@ Multiply by the dual coordinates and convert to the space domain
 function baseDomain!(X::AbstractArray{S}, X̂::AbstractArray{T,N}, duals, P,
                      used1, used2) where {S<:Complex, T, N}
     for i in eachindex(view(X, 1, 1, axes(X)[3:end]...))
-        X[:, :, i] = fftshift((P \ (ifftshift(X̂[:,:, i] ./
-                                              (duals)))))[used1, used2]
+        X[:, :, i] = (P \ (X̂[:,:, i] ./ (duals)))[used1, used2]
     end
 end
 
 
 function baseDomain!(X::AbstractArray{S}, X̂::AbstractArray{T,2}, duals, P,
                      used1, used2) where {T, S<:Complex}
-    X[:, :] = fftshift(P \ (ifftshift(X̂[:,:] ./ (duals))))[used1, used2]
+    X[:, :] = (P \ (X̂[:,:] ./ (duals)))[used1, used2]
 end
 
 function baseDomain!(X::AbstractArray{S}, X̂::AbstractArray{T,N}, duals, P,
                      used1, used2) where {S<:Real, T, N}
     for i in eachindex(view(X, 1, 1, axes(X)[3:end]...))
-        X[:, :, i] = real.(fftshift((P \ (ifftshift(X̂[:,:, i] ./
-                                              (duals)))))[used1, used2])
+        X[:, :, i] = real.((P \ (X̂[:,:, i] ./ (duals)))[used1, used2])
     end
 end
 
 function baseDomain!(X::AbstractArray{S}, X̂::AbstractArray{T,2}, duals, P,
                      used1, used2) where {T, S<:Real}
-    X[:, :] = real.(
-        fftshift(P \ (ifftshift(X̂[:,:] ./ (duals))))[used1, used2])
+    X[:, :] = real.((P \ (X̂[:,:] ./ (duals)))[used1, used2])
 end
 
 
@@ -67,8 +64,8 @@ fill in the `j`th coefficient and fill it into the matrix of coefficients
 function shearing!(X::AbstractArray{T,N}, neededShear, P, coeffs, padBy, used1,
                    used2, j) where {N,T}
     for i in eachindex(view(X, 1, 1, axes(X)[3:end]...))
-        Xfreq = fftshift( P * ifftshift(pad(X[:, :, i], padBy)))
-        tmpCoeff = (P \ ifftshift(Xfreq .* neededShear))[used1, used2]
+        Xfreq = P * pad(X[:, :, i], padBy)
+        tmpCoeff = ifftshift(P \ (Xfreq .* neededShear),(1,2))[used1, used2]
         if T <: Real
             coeffs[:, :, j, i] = real.(tmpCoeff)
         else
@@ -79,8 +76,8 @@ end
 
 function shearing!(X::AbstractArray{T,2}, neededShear, P, coeffs, padBy, used1,
                    used2, j) where T
-    Xfreq =  fftshift( P * ifftshift(pad(X[:, :], padBy)))
-    tmpCoeff = (P \ ifftshift(Xfreq .* neededShear))[used1, used2]
+    Xfreq =  P * pad(X[:, :], padBy)
+    tmpCoeff = ifftshift(P \ (Xfreq .* neededShear),(1,2))[used1, used2]
     if T <: Real
         coeffs[:, :, j] = real.(tmpCoeff)
     else
@@ -114,8 +111,9 @@ Compute the coefficient matrix of the Shearlet transform across the first two
 dimensions of X. If `shearletSystem.padded` is true, it pads the shearlet
 coefficients by `padBy`, which defaults to the widest spatial component of any
 of the shearlets (computed via `getPadBy`). If you're doing a lot of these, you
-can precompute the Fourier transform plan and put it in `P` (note that it is
-type sensitive), and should have the size of X *after* padding.
+can precompute the Fourier transform plan and put it in `P` (note that it
+should have the same element type as your data), and should have the size of X
+*after* padding.
 
 """
 function sheardec2D(X::AbstractArray{CT, N},
@@ -214,7 +212,7 @@ end
 ## some coefficients matrix
 """
 ...
-sheardecadjoint2D(coeffs,shearletSystem) compute the adjoint of the decomposition operator
+    sheardecadjoint2D(coeffs,shearletSystem) compute the adjoint of the decomposition operator
 ...
 """
 function sheardecadjoint2D(coeffs,shearletSystem)
@@ -226,9 +224,9 @@ function sheardecadjoint2D(coeffs,shearletSystem)
         X = zeros(Complex{Float64},size(coeffs,1),size(coeffs,2));
     end
     for j = 1:shearletSystem.nShearlets
-        X = X+fftshift(fft(ifftshift(coeffs[:,:,j]))).*shearletSystem.shearlets[:,:,j];
+        X = X+fft(coeffs[:,:,j]).*shearletSystem.shearlets[:,:,j];
     end
-    return real(fftshift(ifft(ifftshift((1 ./shearletSystem.dualFrameWeights).*X))))
+    return real.(ifft((1 ./shearletSystem.dualFrameWeights).*X))
 
 end # sheardecadjoint2D
 
@@ -251,12 +249,12 @@ function shearrecadjoint2D(X,shearletSystem)
         coeffs = zeros(Complex{Float64},size(shearletSystem.shearlets));
     end
     # The fourier transform of X
-    Xfreq = fftshift(fft(ifftshift(X)));
+    Xfreq = fft(X);
     #compute shearlet coefficients at each scale
     #not that pointwise multiplication in the fourier domain equals convolution
     #in the time-domain
     for j = 1:shearletSystem.nShearlets
-        coeffs[:,:,j] = fftshift(ifft(ifftshift(Xfreq.*conj(shearletSystem.shearlets[:,:,j]))));
+        coeffs[:,:,j] = ifft(Xfreq.*shearletSystem.shearlets[:,:,j]);
     end
     return coeffs
 end # shearrecadjoint2D

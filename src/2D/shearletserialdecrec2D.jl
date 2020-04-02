@@ -23,7 +23,7 @@ function prepareserial2D(X,nScales,shearLevels = ceil.((1:nScales)/2), full = 0,
 directionalFilter = filt_gen("directional_shearlet") , quadratureMirrorFilter = filt_gen("scaling_shearlet"))
 		shearLeveles = map(Int,shearLevels)
 		# Compute the fft transform
-		Xfreq = fftshift(fft(ifftshift(X)));
+		Xfreq = fft(X);
 		# Compute prepared filters
 		preparedFilters = preparefilters2D(size(X,1),size(X,2),nScales,shearLevels,directionalFilter,quadratureMirrorFilter)
 		# Compute dual frames
@@ -58,7 +58,7 @@ function sheardecserial2D(Xfreq, shearletIdx, preparedFilters, dualFrameWeightsC
 		RMS = Shearlets2D.RMS;
 		dualFrameWeights = Shearlets2D.dualFrameWeights;
 		dualFrameWeightsNew = dualFrameWeightsCurr+dualFrameWeights;
-		coeffs = fftshift(ifft(ifftshift(conj(shearlet).*Xfreq)));
+		coeffs = ifft(conj(shearlet).*Xfreq);
 		return Sheardecserial2D(coeffs, shearlet, dualFrameWeightsNew, RMS)
 end # sheardecserial2D
 
@@ -70,7 +70,7 @@ shearrecserial2D(coeffs, shearlet, Xrec) serial recovery of coefficients with ce
 ...
 """
 function shearrecserial2D(coeffs, shearlet, Xrec)
-		return Xrec+fftshift(fft(ifftshift(coeffs))).*shearlet;
+    return Xrec+fft(coeffs).*shearlet;
 end # shearrecserial2D
 
 ##############################################################################
@@ -81,5 +81,5 @@ finishserial2D(Xrec,dualFrameWeightsCurr) serial recovery of coefficients with c
 ...
 """
 function finishserial2D(Xcurr, dualFrameWeights)
-		return fftshift(ifft(ifftshift((1 ./dualFrameWeights).*Xcurr)))
+    return ifft((1 ./dualFrameWeights).*Xcurr)
 end # shearrecserial2D

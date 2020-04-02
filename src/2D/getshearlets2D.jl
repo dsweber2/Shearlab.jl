@@ -363,7 +363,7 @@ transformed is real, only store half the coefficients, as they're otherwise
 redundant.
 """
 function padShearlets(shearlets, dualFrameWeights, typeBecomes, padBy, upperFrameBound)
-    shearlets = real.(fftshift(ifft(ifftshift(shearlets, (1, 2)), (1, 2)),
+    shearlets = real.(fftshift(ifft(ifftshift(shearlets, (1,2)), (1, 2)),
                                (1, 2)))
     shearlets = cat([pad(shearlets[:,:,j], padBy) for
                      j=1:size(shearlets,3)]...; dims = 3)
@@ -375,6 +375,10 @@ function padShearlets(shearlets, dualFrameWeights, typeBecomes, padBy, upperFram
         newSize = size(shearlets)
     end
     newShears = zeros(Complex{eltype(shearlets)}, newSize)
+    totalMass = sum(abs.(shearlets[:,:,1]))
+    # rowMean = sum((1:size(shearlets,1)) .* abs.(shearlets[:,:,1]), dims=(1,2))/totalMass
+    # colMean = sum((1:size(shearlets,2))' .* abs.(shearlets[:,:,1]), dims=(1,2))/totalMass
+    # println("newish location is $((rowMean, colMean))) out of $(size(shearlets)[1:2])")
 
     for j=1:size(shearlets, 3)
         newShears[:, :, j] = P * shearlets[:, :, j]
