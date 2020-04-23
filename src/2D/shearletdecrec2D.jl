@@ -65,7 +65,7 @@ function shearing!(X::AbstractArray{T,N}, neededShear, P, coeffs, padBy, used1,
                    used2, j) where {N,T}
     for i in eachindex(view(X, 1, 1, axes(X)[3:end]...))
         Xfreq = P * pad(X[:, :, i], padBy)
-        tmpCoeff = ifftshift(P \ (Xfreq .* neededShear),(1,2))[used1, used2]
+        tmpCoeff = (P \ (Xfreq .* neededShear))[used1, used2]
         if T <: Real
             coeffs[:, :, j, i] = real.(tmpCoeff)
         else
@@ -77,7 +77,7 @@ end
 function shearing!(X::AbstractArray{T,2}, neededShear, P, coeffs, padBy, used1,
                    used2, j) where T
     Xfreq =  P * pad(X[:, :], padBy)
-    tmpCoeff = ifftshift(P \ (Xfreq .* neededShear),(1,2))[used1, used2]
+    tmpCoeff = (P \ (Xfreq .* neededShear))[used1, used2]
     if T <: Real
         coeffs[:, :, j] = real.(tmpCoeff)
     else

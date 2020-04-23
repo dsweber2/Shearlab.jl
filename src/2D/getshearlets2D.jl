@@ -367,6 +367,7 @@ function padShearlets(shearlets, dualFrameWeights, typeBecomes, padBy, upperFram
                                (1, 2)))
     shearlets = cat([pad(shearlets[:,:,j], padBy) for
                      j=1:size(shearlets,3)]...; dims = 3)
+    shearlets = ifftshift(shearlets, (1,2))
     if typeBecomes <: Real
         P = plan_rfft(zeros(typeBecomes, size(shearlets)[1:2]), (1,2))
         newSize = (div(size(shearlets,1), 2)+1, size(shearlets)[2:3]...)
