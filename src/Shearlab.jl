@@ -1,17 +1,12 @@
-
 __precompile__(true)
 module Shearlab
 
-using Images
 using Wavelets
-using PyPlot
-#using ArrayFire
 using DSP
 using FFTW
 
-export
-			WT, filt_gen, resize_image, load_image, imageplot,
-			rescale, plot_wavelet,subsampling, upsampling,
+export WT, filt_gen, resize_image,
+			rescale, subsampling, upsampling,
 			cconvol, reverse, clamp, perform_wavorth_transform, snr,
 			padarray, fliplr, upsample, fix, dshear, checkfiltersizes, Filterconfigs,
 			Filterswedgebandlow, getwedgebandpasslowpassfilters2D, Preparedfilters,
@@ -45,4 +40,4 @@ const SLsheardecSerial2D = sheardecserial2D
 const SLshearrecSerial2D = shearrecserial2D
 const SLfinishSerial2D = finishserial2D
 
-end #module
+end # module
